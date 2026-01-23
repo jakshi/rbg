@@ -5,14 +5,12 @@ import (
 	"os"
 )
 
-const configFilePath = ".config/rbg/config.json"
-
 type Config struct {
 	DBURL           string `json:"db_url"`
 	CurrentUserName string `json:"current_user_name"`
 }
 
-func getConfigFilePath() (string, error) {
+func expandHome(configFilePath string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -21,8 +19,8 @@ func getConfigFilePath() (string, error) {
 	return homeDir + "/" + configFilePath, nil
 }
 
-func Read() (*Config, error) {
-	configPath, err := getConfigFilePath()
+func Read(configPath string) (*Config, error) {
+	configPath, err := expandHome(configPath)
 	if err != nil {
 		return nil, err
 	}
@@ -41,13 +39,13 @@ func Read() (*Config, error) {
 	return config, nil
 }
 
-func SetUser(config *Config) error {
+func Write(configPath string, config *Config) error {
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	configPath, err := getConfigFilePath()
+	configPath, err = expandHome(configPath)
 	if err != nil {
 		return err
 	}

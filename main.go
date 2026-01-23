@@ -1,28 +1,22 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"os"
 
-	"github.com/jakshi/rbg/internal/config"
+	"github.com/jakshi/rbg/internal/app"
+	"github.com/jakshi/rbg/internal/commands"
 )
 
+const configFilePath = ".config/rbg/config.json"
+
 func main() {
-	cfg, err := config.Read()
+	app, err := app.NewApp(configFilePath)
 	if err != nil {
-		log.Fatalf("Failed to read config: %v", err)
+		log.Fatalf("Failed to create app: %v", err)
 	}
 
-	cfg.CurrentUserName = "kos"
-	err = config.SetUser(cfg)
-	if err != nil {
-		log.Fatalf("Failed to set user: %v", err)
+	if err := commands.Run(app, os.Args[1:]); err != nil {
+		log.Fatal(err)
 	}
-
-	cfg, err = config.Read()
-	if err != nil {
-		log.Fatalf("Failed to read config: %v", err)
-	}
-
-	fmt.Println(*cfg)
 }
