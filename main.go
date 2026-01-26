@@ -11,6 +11,7 @@ import (
 const configFilePath = ".config/rbg/config.json"
 
 func main() {
+
 	app, err := app.NewApp(configFilePath)
 	if err != nil {
 		log.Fatalf("Failed to create app: %v", err)

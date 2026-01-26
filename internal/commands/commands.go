@@ -1,11 +1,15 @@
 package commands
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jakshi/rbg/internal/app"
+	"github.com/jakshi/rbg/internal/database"
 )
 
 type Command struct {
@@ -21,9 +25,10 @@ var ErrNoCommand = errors.New("no command provided")
 func All() map[string]Command {
 	if AllCommands == nil {
 		AllCommands = map[string]Command{
-			"users": {Description: "List users", Run: users},
-			"login": {Description: "Login user", Run: login},
-			"help":  {Description: "Show help", Run: help},
+			"users":    {Description: "List users", Run: users},
+			"login":    {Description: "Login user", Run: login},
+			"help":     {Description: "Show help", Run: help},
+			"register": {Description: "Register user", Run: register},
 		}
 	}
 	return AllCommands
@@ -74,5 +79,33 @@ func help(app *app.App, args []string) error {
 	for _, name := range SortedNames() {
 		fmt.Printf("  %s - %s\n", name, AllCommands[name].Description)
 	}
+	return nil
+}
+func register(app *app.App, args []string) error {
+	if len(args) < 1 {
+		return errors.New("usage: register <username>")
+	}
+	username := args[0]
+
+	ctx := context.Background()
+
+	// Check if user already exists
+	_, err := app.DB.GetUser(ctx, username)
+	if err == nil {
+		return fmt.Errorf("user %s already exists", username)
+	}
+
+	// Create new user
+	_, err = app.DB.CreateUser(app.DB.Context(), database.CreateUserParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      username,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create user: %v", err)
+	}
+
+	fmt.Printf("User %s registered successfully\n", username)
 	return nil
 }

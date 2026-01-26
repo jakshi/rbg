@@ -10,6 +10,10 @@ run *ARGS:
 test:
     go test ./...
 
+# Generate Go code from SQL queries
+sqlc:
+    sqlc generate
+
 # Start PostgreSQL
 pg-start:
     brew services start postgresql@18
