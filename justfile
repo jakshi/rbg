@@ -2,6 +2,8 @@
 default:
     @just --list
 
+db_url := `jq -r .db_url ~/.config/rbg/config.json`
+
 # Run the rbg CLI
 run *ARGS:
     go run . {{ARGS}}
@@ -28,13 +30,13 @@ pg-status:
 
 # Run all migrations up
 db-up:
-    goose -dir sql/schema postgres "$(go run . db-url)" up
+    goose -dir sql/schema postgres "{{db_url}}" up
 
 # Roll back one migration
 db-down:
-    goose -dir sql/schema postgres "$(go run . db-url)" down
+    goose -dir sql/schema postgres "{{db_url}}" down
 
 # Reset DB (down all, then up)
 db-reset:
-    goose -dir sql/schema postgres "$(go run . db-url)" reset
-    goose -dir sql/schema postgres "$(go run . db-url)" up
+    goose -dir sql/schema postgres "{{db_url}}" reset
+    goose -dir sql/schema postgres "{{db_url}}" up

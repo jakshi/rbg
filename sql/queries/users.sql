@@ -12,3 +12,11 @@ WHERE id = $1;
 SELECT *
 FROM users
 WHERE name = $1;
+
+-- name: DeleteAllUsers :exec
+DELETE FROM users;
+
+-- name: ListUsers :many
+SELECT *
+FROM users
+ORDER BY created_at DESC;

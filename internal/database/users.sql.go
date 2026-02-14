@@ -29,6 +29,15 @@ func (q *Queries) CreateUser(ctx context.Context, name string) (User, error) {
 	return i, err
 }
 
+const deleteAllUsers = `-- name: DeleteAllUsers :exec
+DELETE FROM users
+`
+
+func (q *Queries) DeleteAllUsers(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteAllUsers)
+	return err
+}
+
 const getUser = `-- name: GetUser :one
 SELECT id, name, created_at, updated_at
 FROM users
@@ -63,4 +72,38 @@ func (q *Queries) GetUserByName(ctx context.Context, name string) (User, error) 
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, name, created_at, updated_at
+FROM users
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
