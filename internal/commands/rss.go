@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"html"
 	"io"
 	"net/http"
@@ -89,6 +90,32 @@ func agg(app *app.App, args []string) error {
 
 	return nil
 }
+
+func listFeeds(app *app.App, args []string) error {
+	ctx := context.Background()
+	feeds, err := app.DB.ListFeeds(ctx)
+	if err != nil {
+		return err
+	}
+
+	if len(feeds) == 0 {
+		println("No feeds found.")
+		return nil
+	}
+
+	println("Your Feeds:")
+	for _, feed := range feeds {
+		user, err := app.DB.GetUser(ctx, feed.UserID)
+		if err != nil {
+			return err
+		}
+		println("- " + feed.Name + " (" + feed.Url + ")")
+		println("  Added by:", user.Name)
+	}
+
+	return nil
+}
+
 func addFeed(app *app.App, args []string) error {
 	if len(args) < 2 {
 		return errors.New("usage: addfeed <feed name> <feed URL>")
@@ -110,7 +137,7 @@ func addFeed(app *app.App, args []string) error {
 		return errors.New("user not found")
 	}
 
-	_, err = app.DB.CreateFeed(ctx, database.CreateFeedParams{
+	createdFeed, err := app.DB.CreateFeed(ctx, database.CreateFeedParams{
 		Name:   feedName,
 		Url:    feedURL,
 		UserID: user.ID,
@@ -135,7 +162,90 @@ func addFeed(app *app.App, args []string) error {
 		println("  Item PubDate:", item.PubDate)
 		println()
 	}
+	
+	// Let's create a feed follow for the user to automatically follow the feed they just added
+	_, err = app.DB.CreateFeedFollow(ctx, database.CreateFeedFollowParams{
+		UserID: user.ID,
+		FeedID: createdFeed.ID,
+	})
+	if err != nil {
+		return err
+	}
+
+	println("You are now following the feed")
 
 	return nil
 
+}
+
+func followFeed(app *app.App, args []string) error {
+	if len(args) < 1 {
+		return errors.New("usage: follow <feed URL>")
+	}
+	feedURL := args[0]
+
+	ctx := context.Background()
+	feed, err := app.DB.GetFeedByURL(ctx, feedURL)
+	if err != nil {
+		return err
+	}
+
+	currentUser := app.Config.CurrentUserName
+	if currentUser == "" {
+		return errors.New("no user logged in, please login first")
+	}
+
+	user, exists, err := getUserByName(ctx, app, currentUser)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.New("user not found")
+	}
+
+	result, err := app.DB.CreateFeedFollow(ctx, database.CreateFeedFollowParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Feed Title:", result.FeedName)
+	fmt.Println("User", user.Name, "is now following the feed")
+
+	return nil
+}
+
+func listFollowing(app *app.App, args []string) error {
+	currentUser := app.Config.CurrentUserName
+	if currentUser == "" {
+		return errors.New("no user logged in, please login first")
+	}
+
+	ctx := context.Background()
+	user, exists, err := getUserByName(ctx, app, currentUser)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.New("user not found")
+	}
+
+	follows, err := app.DB.GetFeedFollowsForUser(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	if len(follows) == 0 {
+		println("You are not following any feeds.")
+		return nil
+	}
+
+	println("Feeds you are following:")
+	for _, follow := range follows {
+		println("- " + follow.FeedName + " (" + follow.FeedUrl + ")")
+	}
+
+	return nil
 }

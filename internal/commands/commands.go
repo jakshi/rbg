@@ -21,14 +21,17 @@ var ErrNoCommand = errors.New("no command provided")
 func All() map[string]Command {
 	if AllCommands == nil {
 		AllCommands = map[string]Command{
-			"users":    {Description: "List users", Run: users},
-			"login":    {Description: "Login user", Run: login},
-			"help":     {Description: "Show help", Run: help},
-			"register": {Description: "Register user", Run: register},
-			"db-url":   {Description: "Print database URL", Run: dbURL},
-			"reset":    {Description: "Reset the database", Run: reset},
-			"agg":      {Description: "Aggregator service", Run: agg},
-			"addfeed":  {Description: "Add a new feed", Run: addFeed},
+			"users":     {Description: "List users", Run: users},
+			"login":     {Description: "Login user", Run: login},
+			"help":      {Description: "Show help", Run: help},
+			"register":  {Description: "Register user", Run: register},
+			"db-url":    {Description: "Print database URL", Run: dbURL},
+			"reset":     {Description: "Reset the database", Run: reset},
+			"agg":       {Description: "Aggregator service", Run: agg},
+			"addfeed":   {Description: "Add a new feed", Run: addFeed},
+			"feeds":     {Description: "List all feeds", Run: listFeeds},
+			"follow":    {Description: "Follow a feed", Run: followFeed},
+			"following": {Description: "List followed feeds", Run: listFollowing},
 		}
 	}
 	return AllCommands
