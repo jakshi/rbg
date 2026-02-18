@@ -28,10 +28,11 @@ func All() map[string]Command {
 			"db-url":    {Description: "Print database URL", Run: dbURL},
 			"reset":     {Description: "Reset the database", Run: reset},
 			"agg":       {Description: "Aggregator service", Run: agg},
-			"addfeed":   {Description: "Add a new feed", Run: addFeed},
+			"addfeed":   {Description: "Add a new feed", Run: middlewareLoggedIn(addFeed)},
 			"feeds":     {Description: "List all feeds", Run: listFeeds},
-			"follow":    {Description: "Follow a feed", Run: followFeed},
-			"following": {Description: "List followed feeds", Run: listFollowing},
+			"follow":    {Description: "Follow a feed", Run: middlewareLoggedIn(followFeed)},
+			"following": {Description: "List followed feeds", Run: middlewareLoggedIn(listFollowing)},
+			"unfollow":  {Description: "Unfollow a feed", Run: middlewareLoggedIn(unfollowFeed)},
 		}
 	}
 	return AllCommands
