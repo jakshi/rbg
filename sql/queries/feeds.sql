@@ -20,3 +20,14 @@ FROM feed_follows ff
 JOIN feeds ON ff.feed_id = feeds.id
 WHERE ff.user_id = $1
 ORDER BY ff.created_at DESC;
+
+-- name: MarkFeedFetched :exec
+UPDATE feeds
+SET last_fetched_at = NOW(), updated_at = NOW()
+WHERE id = $1;
+
+-- name: GetNextFeedToFetch :one
+SELECT *
+FROM feeds
+ORDER BY last_fetched_at ASC NULLS FIRST, created_at ASC
+LIMIT 1;

@@ -8,6 +8,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/jakshi/rbg/internal/database"
 
@@ -65,7 +66,44 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 	return feed, nil
 }
 
+func scrapeFeeds(app *app.App) error {
+	ctx := context.Background()
+	feed, err := app.DB.GetNextFeedToFetch(ctx)
+	if err != nil {
+		return err
+	}
+	if err := app.DB.MarkFeedFetched(ctx, feed.ID); err != nil {
+		return fmt.Errorf("mark fetched: %w", err)
+	}
+
+	fetchedFeed, err := fetchFeed(ctx, feed.Url)
+	if err != nil {
+		return fmt.Errorf("fetch feed: %w", err)
+	}
+
+	println("Feed Title:", fetchedFeed.Channel.Title)
+	println("Feed Description:", fetchedFeed.Channel.Description)
+	for _, item := range fetchedFeed.Channel.Item {
+		println("  Item Title:", item.Title)
+		println("  Item Link:", item.Link)
+		println("  Item Description:", item.Description)
+		println("  Item PubDate:", item.PubDate)
+		println()
+	}
+
+	return nil
+}
+
 func agg(app *app.App, args []string) error {
+	if len(args) < 1 {
+		return errors.New("usage: agg <time_between_reqs>")
+	}
+	durStr := args[0]
+	d, err := time.ParseDuration(durStr)
+	if err != nil {
+		return fmt.Errorf("invalid duration %q: %w", durStr, err)
+	}
+
 	ctx := context.Background()
 	feedURLs := []string{
 		"https://www.wagslane.dev/index.xml",
