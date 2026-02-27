@@ -2,12 +2,18 @@ package commands
 
 import (
 	"context"
+	"database/sql"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"html"
 	"io"
 	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jakshi/rbg/internal/database"
@@ -66,14 +72,51 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 	return feed, nil
 }
 
-func scrapeFeeds(app *app.App) error {
-	ctx := context.Background()
+// parsePubDate tries several layouts and returns sql.NullTime.
+// If s is empty or unparsable, returns Valid=false and nil error.
+func parsePubDate(s string) (sql.NullTime, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return sql.NullTime{}, nil
+	}
+
+	// Common RSS date formats handled by net/http
+	if t, err := http.ParseTime(s); err == nil {
+		return sql.NullTime{Time: t, Valid: true}, nil
+	}
+
+	// Try RFC3339 and variants
+	layouts := []string{
+		time.RFC3339,
+		time.RFC3339Nano,
+		time.RubyDate,
+		time.ANSIC,
+		"Mon, 02 Jan 2006 15:04:05 MST", // explicit common layout
+	}
+
+	for _, l := range layouts {
+		if t, err := time.Parse(l, s); err == nil {
+			return sql.NullTime{Time: t, Valid: true}, nil
+		}
+	}
+
+	// Try unix timestamp (seconds)
+	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return sql.NullTime{Time: time.Unix(i, 0), Valid: true}, nil
+	}
+
+	// give up — treat as missing rather than failing
+	return sql.NullTime{}, nil
+}
+
+func scrapeFeeds(ctx context.Context, app *app.App) error {
 	feed, err := app.DB.GetNextFeedToFetch(ctx)
 	if err != nil {
+		// treat sql.ErrNoRows as "nothing to do" rather than a hard error
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
 		return err
-	}
-	if err := app.DB.MarkFeedFetched(ctx, feed.ID); err != nil {
-		return fmt.Errorf("mark fetched: %w", err)
 	}
 
 	fetchedFeed, err := fetchFeed(ctx, feed.Url)
@@ -81,14 +124,35 @@ func scrapeFeeds(app *app.App) error {
 		return fmt.Errorf("fetch feed: %w", err)
 	}
 
+	if err := app.DB.MarkFeedFetched(ctx, feed.ID); err != nil {
+		return fmt.Errorf("mark fetched: %w", err)
+	}
+
 	println("Feed Title:", fetchedFeed.Channel.Title)
 	println("Feed Description:", fetchedFeed.Channel.Description)
+
 	for _, item := range fetchedFeed.Channel.Item {
-		println("  Item Title:", item.Title)
-		println("  Item Link:", item.Link)
-		println("  Item Description:", item.Description)
-		println("  Item PubDate:", item.PubDate)
-		println()
+		nt, err := parsePubDate(item.PubDate)
+		if err != nil {
+			fmt.Printf("parse date: %w", err)
+		}
+		_, err = app.DB.CreatePost(ctx, database.CreatePostParams{
+			FeedID: feed.ID,
+			Title:  item.Title,
+			Url:    item.Link,
+			Description: sql.NullString{
+				String: item.Description,
+				Valid:  item.Description != "",
+			},
+			PublishedAt: nt,
+		})
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				// Post already exists, skip it
+				continue
+			}
+			fmt.Printf("create post: %w", err)
+		}
 	}
 
 	return nil
@@ -104,29 +168,28 @@ func agg(app *app.App, args []string) error {
 		return fmt.Errorf("invalid duration %q: %w", durStr, err)
 	}
 
-	ctx := context.Background()
-	feedURLs := []string{
-		"https://www.wagslane.dev/index.xml",
-	}
+	fmt.Printf("Starting aggregator with a delay of %s between requests...\n", d)
 
-	for _, url := range feedURLs {
-		feed, err := fetchFeed(ctx, url)
-		if err != nil {
-			return err
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	ticker := time.NewTicker(d)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println("Shutting down aggregator...")
+			return nil
+		case <-ticker.C:
+			if err := scrapeFeeds(ctx, app); err != nil {
+				if errors.Is(err, context.Canceled) {
+					return nil
+				}
+				fmt.Printf("scrape error: %v\n", err)
+			}
 		}
-
-		println("Feed Title:", feed.Channel.Title)
-		println("Feed Description:", feed.Channel.Description)
-		for _, item := range feed.Channel.Item {
-			println("  Item Title:", item.Title)
-			println("  Item Link:", item.Link)
-			println("  Item Description:", item.Description)
-			println("  Item PubDate:", item.PubDate)
-			println()
-		}
 	}
-
-	return nil
 }
 
 func listFeeds(app *app.App, args []string) error {
@@ -270,6 +333,52 @@ func unfollowFeed(app *app.App, args []string, user database.User) error {
 	}
 
 	fmt.Println("User", user.Name, "has unfollowed the feed")
+
+	return nil
+}
+
+func browse(app *app.App, args []string, user database.User) error {
+	ctx := context.Background()
+
+	// default values
+	limit := 2
+
+	// if first arg provided, parse as limit
+	if len(args) >= 1 && args[0] != "" {
+		if v, err := strconv.Atoi(args[0]); err == nil && v > 0 {
+			limit = v
+		} else if err != nil {
+			fmt.Printf("invalid limit %q, using default %d\n", args[0], limit)
+		}
+	}
+
+	posts, err := app.DB.GetPostsForUser(ctx, database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+		Offset: 0,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if len(posts) == 0 {
+		println("No posts found for your followed feeds.")
+		return nil
+	}
+
+	println("Posts from your followed feeds:")
+	for _, post := range posts {
+		println("- " + post.Title)
+		println("  Link:", post.Url)
+		if post.Description.Valid {
+			println("  Description:", post.Description.String)
+		}
+		if post.PublishedAt.Valid {
+			println("  Published At:", post.PublishedAt.Time.Format(time.RFC1123))
+		}
+		println()
+	}
 
 	return nil
 }

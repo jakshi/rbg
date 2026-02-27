@@ -33,6 +33,7 @@ func All() map[string]Command {
 			"follow":    {Description: "Follow a feed", Run: middlewareLoggedIn(followFeed)},
 			"following": {Description: "List followed feeds", Run: middlewareLoggedIn(listFollowing)},
 			"unfollow":  {Description: "Unfollow a feed", Run: middlewareLoggedIn(unfollowFeed)},
+			"browse":    {Description: "Browse feed items", Run: middlewareLoggedIn(browse)},
 		}
 	}
 	return AllCommands

@@ -40,3 +40,8 @@ db-down:
 db-reset:
     goose -dir sql/schema postgres "{{db_url}}" reset
     goose -dir sql/schema postgres "{{db_url}}" up
+
+# Seed example data (runs the script in ./scripts)
+# Seeds a test user, three example feeds, follows and a few sample posts.
+seed_example:
+    ./scripts/seed_example.sh
